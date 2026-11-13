@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  BUYER
+  SELLER
+  ADMIN
+}
+
+enum Platform {
+  MT4
+  MT5
+  BOTH
+}
+
+enum ProductType {
+  BOT_EA
+  INDICATOR
+}
+
+enum IndicatorCategory {
+  SMC_ICT
+  TREND_SIGNAL
+  VOLUME_FLOW
+  OSCILLATOR
+  MULTI_TIMEFRAME
+}
+
+enum BotStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum IndicatorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  password     String
+  fullName     String
+  role         Role        @default(BUYER)
+  balance      Decimal     @default(0.0) @db.Decimal(12, 2)
+  refreshToken String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  bots         Bot[]
+  indicators   Indicator[]
+  orders       Order[]
+  licenses     License[]
+  reviews      Review[]
+}
+
+/// Bảng sản phẩm 1: Hệ thống giao dịch tự động (Expert Advisor - Bot EA)
+model Bot {
+  id           String    @id @default(uuid())
+  title        String
+  slug         String    @unique
+  shortDesc    String    @db.VarChar(255)
+  description  String    @db.Text
+  price        Decimal   @db.Decimal(10, 2)
+  platform     Platform  @default(MT5)
+  version      String    @default("1.0.0")
+  fileKey      String
+  demoFileKey  String?
+  thumbnailUrl String?
+  winRate      Float     @default(0)
+  maxDrawdown  Float     @default(0)
+  profitFactor Float     @default(0)
+  status       BotStatus @default(APPROVED)
+
+  sellerId     String
+  seller       User      @relation(fields: [sellerId], references: [id])
+
+  orders       Order[]
+  licenses     License[]
+  reviews      Review[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, platform])
+  @@index([sellerId])
+}
+
+/// Bảng sản phẩm 2: Chỉ báo phân tích kỹ thuật & tín hiệu (Custom Indicator)
+model Indicator {
+  id           String            @id @default(uuid())
+  title        String
+  slug         String            @unique
+  shortDesc    String            @db.VarChar(255)
+  description  String            @db.Text
+  price        Decimal           @db.Decimal(10, 2)
+  platform     Platform          @default(MT5)
+  version      String            @default("1.0.0")
+  fileKey      String
+  demoFileKey  String?
+  thumbnailUrl String?
+
+  /// Thông số đặc thù riêng của Indicator (tách biệt với Bot EA)
+  category     IndicatorCategory @default(TREND_SIGNAL)
+  accuracyRate Float             @default(0)
+  isNonRepaint Boolean           @default(true)
+  hasAlert     Boolean           @default(true)
+  timeframes   String            @default("M5, M15, H1, H4")
+  status       IndicatorStatus   @default(APPROVED)
+
+  sellerId     String
+  seller       User              @relation(fields: [sellerId], references: [id])
+
+  orders       Order[]
+  licenses     License[]
+  reviews      Review[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([status, platform, category])
+  @@index([sellerId])
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+
+  productType   ProductType @default(BOT_EA)
+  botId         String?
+  bot           Bot?        @relation(fields: [botId], references: [id])
+  indicatorId   String?
+  indicator     Indicator?  @relation(fields: [indicatorId], references: [id])
+
+  amount        Decimal     @db.Decimal(10, 2)
+  status        OrderStatus @default(PENDING)
+  paymentMethod String
+  transactionId String?     @unique
+  createdAt     DateTime    @default(now())
+
+  @@index([productType])
+  @@index([userId])
+}
+
+model License {
+  id            String      @id @default(uuid())
+  licenseKey    String      @unique
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+
+  productType   ProductType @default(BOT_EA)
+  botId         String?
+  bot           Bot?        @relation(fields: [botId], references: [id])
+  indicatorId   String?
+  indicator     Indicator?  @relation(fields: [indicatorId], references: [id])
+
+  mtAccountNo   String?
+  resetCount    Int         @default(0)
+  isActive      Boolean     @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([licenseKey])
+  @@index([productType])
+}
+
+model Review {
+  id          String      @id @default(uuid())
+  rating      Int
+  comment     String      @db.Text
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+
+  productType ProductType @default(BOT_EA)
+  botId       String?
+  bot         Bot?        @relation(fields: [botId], references: [id])
+  indicatorId String?
+  indicator   Indicator?  @relation(fields: [indicatorId], references: [id])
+
+  createdAt   DateTime    @default(now())
+
+  @@unique([userId, botId])
+  @@unique([userId, indicatorId])
+}
